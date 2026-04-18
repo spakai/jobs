@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 5s          # How often Prometheus pulls metrics
+  evaluation_interval: 5s
+
+scrape_configs:
+  # Scrape the Spring Boot app's /actuator/prometheus endpoint
+  - job_name: 'job-scheduler'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['172.26.139.118:8080']   # WSL2 host IP (reachable from containers)
+        labels:
+          application: 'job-scheduler-prometheus'
