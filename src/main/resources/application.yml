@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: job-scheduler-prometheus
+
+  cassandra:
+    keyspace-name: job_scheduler
+    contact-points: localhost
+    port: 9042
+    local-datacenter: datacenter1
+    schema-action: create_if_not_exists
+
+# Expose Prometheus endpoint via Spring Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus,health,info,metrics
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+server:
+  port: 8080
