@@ -5,6 +5,7 @@ import com.example.jobscheduler.repository.JobRepository;
 import io.micrometer.core.instrument.Counter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -15,10 +16,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Periodically creates new jobs in Cassandra.
- *
- * Every 5 seconds a new job is inserted with a random TTL (0–60 seconds).
- * The pending_jobs gauge is INCREMENTED by 1.
- * The jobs_scheduled counter is INCREMENTED by 1.
  */
 @Service
 public class JobSchedulerService {
@@ -29,6 +26,12 @@ public class JobSchedulerService {
     private final AtomicInteger pendingJobsCount;     // ← GAUGE backing field
     private final Counter jobsScheduledCounter;       // ← COUNTER (monotonic)
 
+    @Value("${app.scheduler.ttl-min:0}")
+    private int ttlMin;
+
+    @Value("${app.scheduler.ttl-max:60}")
+    private int ttlMax;
+
     public JobSchedulerService(JobRepository jobRepository,
                                AtomicInteger pendingJobsCount,
                                Counter jobsScheduledCounter) {
@@ -38,11 +41,11 @@ public class JobSchedulerService {
     }
 
     /**
-     * Runs every 5 seconds. Creates a job with a random TTL between 0 and 60s.
+     * Creates a job with a random TTL. Fixed rate configurable via application.yml.
      */
-    @Scheduled(fixedRate = 5000)
+    @Scheduled(fixedRateString = "${app.scheduler.fixed-rate:5000}")
     public void scheduleJob() {
-        int ttl = ThreadLocalRandom.current().nextInt(0, 61);  // 0–60 inclusive
+        int ttl = ThreadLocalRandom.current().nextInt(ttlMin, ttlMax + 1);
         Job job = new Job(UUID.randomUUID(), "SCHEDULED", Instant.now(), ttl);
 
         jobRepository.save(job);

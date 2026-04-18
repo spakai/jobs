@@ -51,9 +51,9 @@ public class JobExecutorService {
     }
 
     /**
-     * Polls every 2 seconds for expired jobs.
+     * Polls for expired jobs. Rate configurable via application.yml.
      */
-    @Scheduled(fixedRate = 2000)
+    @Scheduled(fixedRateString = "${app.executor.fixed-rate:2000}")
     public void executeExpiredJobs() {
         List<Job> expiredJobs = jobRepository.findExpiredJobs("SCHEDULED", Instant.now());
 
