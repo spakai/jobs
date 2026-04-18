@@ -71,4 +71,16 @@ public class MetricsConfig {
                 .tag("type", "job_scheduler")
                 .register(registry);
     }
+
+    /**
+     * COUNTER: Total jobs failed — only goes UP.
+     * Prometheus name: jobs_failed_total
+     */
+    @Bean
+    public Counter jobsFailedCounter(MeterRegistry registry) {
+        return Counter.builder("jobs.failed.total")
+                .description("Total number of jobs failed to schedule or execute")
+                .tag("type", "job_scheduler")
+                .register(registry);
+    }
 }

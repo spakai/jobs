@@ -25,6 +25,7 @@ public class JobSchedulerService {
     private final JobRepository jobRepository;
     private final AtomicInteger pendingJobsCount;     // ← GAUGE backing field
     private final Counter jobsScheduledCounter;       // ← COUNTER (monotonic)
+    private final Counter jobsFailedCounter;          // ← COUNTER for failures
 
     @Value("${app.scheduler.ttl-min:0}")
     private int ttlMin;
@@ -34,10 +35,12 @@ public class JobSchedulerService {
 
     public JobSchedulerService(JobRepository jobRepository,
                                AtomicInteger pendingJobsCount,
-                               Counter jobsScheduledCounter) {
+                               Counter jobsScheduledCounter,
+                               Counter jobsFailedCounter) {
         this.jobRepository = jobRepository;
         this.pendingJobsCount = pendingJobsCount;
         this.jobsScheduledCounter = jobsScheduledCounter;
+        this.jobsFailedCounter = jobsFailedCounter;
     }
 
     /**
@@ -48,20 +51,25 @@ public class JobSchedulerService {
         int ttl = ThreadLocalRandom.current().nextInt(ttlMin, ttlMax + 1);
         Job job = new Job(UUID.randomUUID(), "SCHEDULED", Instant.now(), ttl);
 
-        jobRepository.save(job);
+        try {
+            jobRepository.save(job);
 
-        // ┌────────────────────────────────────────────────┐
-        // │  GAUGE INCREMENT: pending_jobs_total UP by 1    │
-        // └────────────────────────────────────────────────┘
-        int current = pendingJobsCount.incrementAndGet();
+            // ┌────────────────────────────────────────────────┐
+            // │  GAUGE INCREMENT: pending_jobs_total UP by 1    │
+            // └────────────────────────────────────────────────┘
+            int current = pendingJobsCount.incrementAndGet();
 
-        // ┌────────────────────────────────────────────────┐
-        // │  COUNTER INCREMENT: jobs_scheduled_total +1     │
-        // │  (monotonic — never decreases)                  │
-        // └────────────────────────────────────────────────┘
-        jobsScheduledCounter.increment();
+            // ┌────────────────────────────────────────────────┐
+            // │  COUNTER INCREMENT: jobs_scheduled_total +1     │
+            // │  (monotonic — never decreases)                  │
+            // └────────────────────────────────────────────────┘
+            jobsScheduledCounter.increment();
 
-        log.info("📋 JOB SCHEDULED: {} | TTL={}s | executeAt={} | pending_jobs_total={}",
-                job.getId(), ttl, job.getExecuteAt(), current);
+            log.info("📋 JOB SCHEDULED: {} | TTL={}s | executeAt={} | pending_jobs_total={}",
+                    job.getId(), ttl, job.getExecuteAt(), current);
+        } catch (Exception e) {
+            jobsFailedCounter.increment();
+            log.error("❌ Failed to schedule job: {}. DB error: {}", job.getId(), e.getMessage());
+        }
     }
 }

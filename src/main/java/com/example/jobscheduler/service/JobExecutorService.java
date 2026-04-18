@@ -34,6 +34,7 @@ public class JobExecutorService {
     private final JobRepository jobRepository;
     private final AtomicInteger pendingJobsCount;     // ← GAUGE backing field
     private final Counter jobsExecutedCounter;        // ← COUNTER (monotonic)
+    private final Counter jobsFailedCounter;          // ← COUNTER for failures
 
     /**
      * Track job IDs currently being processed to prevent double-execution.
@@ -44,10 +45,12 @@ public class JobExecutorService {
 
     public JobExecutorService(JobRepository jobRepository,
                               AtomicInteger pendingJobsCount,
-                              Counter jobsExecutedCounter) {
+                              Counter jobsExecutedCounter,
+                              Counter jobsFailedCounter) {
         this.jobRepository = jobRepository;
         this.pendingJobsCount = pendingJobsCount;
         this.jobsExecutedCounter = jobsExecutedCounter;
+        this.jobsFailedCounter = jobsFailedCounter;
     }
 
     /**
@@ -55,7 +58,14 @@ public class JobExecutorService {
      */
     @Scheduled(fixedRateString = "${app.executor.fixed-rate:2000}")
     public void executeExpiredJobs() {
-        List<Job> expiredJobs = jobRepository.findExpiredJobs("SCHEDULED", Instant.now());
+        List<Job> expiredJobs;
+        try {
+            expiredJobs = jobRepository.findExpiredJobs("SCHEDULED", Instant.now());
+        } catch (Exception e) {
+            jobsFailedCounter.increment();
+            log.error("❌ Failed to query expired jobs. DB error: {}", e.getMessage());
+            return;
+        }
 
         for (Job job : expiredJobs) {
             // ── Guard: skip if already being processed ─────────
@@ -86,6 +96,9 @@ public class JobExecutorService {
 
                 log.info("🚀 JOB EXECUTED:  {} | was TTL={}s | pending_jobs_total={}",
                         job.getId(), job.getTtlSeconds(), current);
+            } catch (Exception e) {
+                jobsFailedCounter.increment();
+                log.error("❌ Failed to execute job {}. DB error: {}", job.getId(), e.getMessage());
             } finally {
                 inProgress.remove(job.getId());
             }
